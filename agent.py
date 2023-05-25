@@ -13,6 +13,7 @@ from schnetpack.interfaces import AtomsConverter as SchNetConverter
 from torch.optim import Adam
 import logging
 from tqdm import tqdm
+from env import Env
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger('logger')
@@ -23,7 +24,6 @@ logger.addHandler(file_handler)
 
 class Actor:
     def __init__(self, args):
-        self.repr = repr
         self.k = args.k
         self.n_images = args.n_images
         self.batch_size = args.batch_size
@@ -32,11 +32,11 @@ class Actor:
         self.max_epochs = args.max_epochs
         self.device = args.device
         self.converter = SchNetConverter(neighbor_list=trn.ASENeighborList(cutoff=10), device=self.device)
-        self.schnetpack_model = torch.load('best_inference_model')
+        self.schnetpack_model = torch.load(args.painn_model_location)
         self.schnetpack_model.to(self.device)
-        self.model = Actor_Model(args.basis, args.n_images, args.n_bins, args.cutoff, args.batch_size, args.device, args.k)
+        self.model = Actor_Model(args.basis, args.n_images, args.n_bins, args.cutoff, args.batch_size, args.device, args.k, args.grid_size)
         self.model.to(args.device)
-        self.optimizer = Adam(self.trainable_params, args.lr)
+        self.optimizer = Adam(self.model.parameters(), args.lr)
         self.idx_grid = torch.arange(0, self.n_bins)
         self.idx_grid = self.idx_grid.repeat(self.batch_size*self.n_images,1)
         self.idx_grid = self.idx_grid.reshape(self.batch_size, self.n_images, self.n_bins).to(args.device)
@@ -49,9 +49,9 @@ class Actor:
 
         num_samples = np.count_nonzero(results == 1)
 
-        r_chosen, r_dist, r_log_dist, positions, tangent_input, force_index, tangent_index = self.model(inputs, forces, energies, num_samples)
+        r_chosen, r_dist, r_log_dist, tangent_input, force_index, tangent_index = self.model(inputs, forces, energies, num_samples)
             
-        return r_chosen, r_dist, r_log_dist, positions, tangent_input, force_index, tangent_index
+        return r_chosen, r_dist, r_log_dist, tangent_input, force_index, tangent_index
 
     def compute_loss(self, r_chosen_batch, r_dist_batch, r_log_batch, advantages, step):
 
@@ -93,11 +93,9 @@ class Actor:
 
 class Critic:
     def __init__(self, args):
-        self.repr = repr
         self.model = Critic_Model(args)
-        self.trainable_params = filter(lambda p: p.requires_grad, self.model.parameters())
         self.model.to(args.device)
-        self.optimizer = Adam(self.trainable_params, args.lr)
+        self.optimizer = Adam(self.model.parameters(), args.lr)
 
     def compute_loss(self, v_pred, td_targets):
         mse_loss = torch.nn.MSELoss()
@@ -112,7 +110,7 @@ class Critic:
         return loss
 
 class Agent:
-    def __init__(self, args, dataloader):
+    def __init__(self, args, dataloader, opt_length):
         self.radial_basis = spk.nn.GaussianRBF(n_rbf=20, cutoff=args.cutoff)
         self.cut_off_func = spk.nn.CosineCutoff(args.cutoff)
         self.actor = Actor(args)
@@ -126,16 +124,15 @@ class Agent:
         self.gap = args.gap
         self.k = args.k
         self.basis = args.basis
-        self.max_length = args.max_length
         self.episode_length = 10
         self.update_interval = 2
         self.gamma = 1.01
-        self.max_epochs = args.max_epochs
-        self.env = Env(self.batch_size, self.n_images, self.cutoff, self.k, self.basis, self.max_length, args.device, args.n_bins)
+        self.max_epochs = opt_length
+        self.env = Env(self.batch_size, self.n_images, self.cutoff, self.k, self.basis, args.device, args.n_bins, args.painn_model_location)
         self.converter = SchNetConverter(neighbor_list=trn.ASENeighborList(cutoff=10), device=args.device)
         self.logger = logging.getLogger('Logger')
         self.logger = logging.FileHandler('log_file.txt')
-        self.schnetpack_model = torch.load('best_inference_model')
+        self.schnetpack_model = torch.load(args.painn_model_location)
         self.schnetpack_model.to(args.device)
         self.max_reward = 0
 

@@ -16,6 +16,7 @@ class Actor_Model(nn.Module):
         batch_size: int,
         device: str,
         k: int,
+        grid_size: int,
     ):
         super(Actor_Model, self).__init__()
         self.Rn_layers = 6
@@ -52,8 +53,7 @@ class Actor_Model(nn.Module):
         self.self_attn_force = nn.MultiheadAttention(n_atom_basis, 1, dropout=0.2, batch_first=True, dtype=torch.float64)
         self.self_attn_tangent = nn.MultiheadAttention(n_atom_basis, 1, dropout=0.2, batch_first=True, dtype=torch.float64)
 
-        self.r_grid = torch.linspace(0, 100, self.n_bins).to(device)  
-        self.t_grid = torch.linspace(-1.1, -0.9, self.n_bins).to(device)  
+        self.r_grid = torch.linspace(0, grid_size, self.n_bins).to(device)  
 
         self.atoms_converter = AtomsConverter(
             self.n_images,
@@ -70,8 +70,8 @@ class Actor_Model(nn.Module):
         
         #Mask tensors are calculated to support the relevant tangent vector calculation
         positions =  inputs["_positions"]
-        mol_size = inputs["_n_atoms"]
-        tangent = positions.reshape(self.batch_size,self.n_images,mol_size[0],3)[0][1].detach().cpu().numpy()
+        mol_size = int(inputs["_n_atoms"][0])
+        tangent = positions.reshape(self.batch_size,self.n_images,mol_size,3)[0][1].detach().cpu().numpy()
         mol_splits = tuple(inputs["_n_atoms"].cpu().numpy())
         energies = energies.reshape(self.batch_size, self.n_images)
         springs = torch.ones(self.batch_size, self.n_images, 3, self.n_atom_basis)
@@ -115,7 +115,7 @@ class Actor_Model(nn.Module):
         force_index = force_index.flatten()
         force_index[perm] = chosen_values[perm]
         force_index = force_index.reshape(self.batch_size,10)
-        force_index_ = force_index.unsqueeze(-1).repeat(1,1,23)
+        force_index_ = force_index.unsqueeze(-1).repeat(1,1,mol_size)
         force_log_soft = torch.log_softmax(force_output, dim=-1)
         
         #Full representation is passed through a self attention layer
@@ -187,4 +187,4 @@ class Actor_Model(nn.Module):
         new_shape = (self.batch_size, self.n_images) + positions.shape[1:]
         positions = torch.reshape(positions, new_shape)
 
-        return r_chosen, r_dist, r_log_dist, positions, tangent_input, self.r_grid[force_index_], self.r_grid[tangent_index_]
+        return r_chosen, r_dist, r_log_dist, tangent_input, self.r_grid[force_index_], self.r_grid[tangent_index_]

@@ -12,7 +12,7 @@ from math import sqrt
 
 class Env():
 
-    def __init__(self, batch_size, n_images, cutoff, spring_k, n_atom_basis, max_length, device, n_bins):
+    def __init__(self, batch_size, n_images, cutoff, spring_k, n_atom_basis, device, n_bins, model_location):
         self.batch_size = batch_size
         self.n_images = n_images
         self.cutoff = cutoff
@@ -20,9 +20,8 @@ class Env():
         self.k = spring_k
         self.basis = n_atom_basis
         self.device = device
-        self.max_length = max_length
         self.min_fmax = 10000
-        self.schnetpack_model = torch.load('best_inference_model')
+        self.schnetpack_model = torch.load(model_location)
         self.schnetpack_model.to(device)
         self.converter = SchNetConverter(neighbor_list=trn.ASENeighborList(cutoff=10), device=device)
         self.limit = 0.5

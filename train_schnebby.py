@@ -1,4 +1,4 @@
-from A3C_agent import Agent
+from agent import Agent
 import ase.io
 import argparse
 from neb.interpolatation import get_interpolation
@@ -29,7 +29,7 @@ def main():
     parser.add_argument('--cutoff', type=float, help='Distance cutoff',
                         default=10)
     parser.add_argument('--basis', type=int, help='Atomwise dense layer size',
-                        default=64)
+                        default=128)
     parser.add_argument('--max_epochs', type=int, help='Number of steps',
                         default=50000)
     parser.add_argument('--lr', type=float, help='Actor learning rate',
@@ -47,10 +47,14 @@ def main():
     			 default='data/reactant.xyz')
     parser.add_argument('--product_file', help='Location of product file', 
     			 default='data/product.xyz')
-    parser.add_argument('--preopt_length', 'Length of preoptimisation',
-    			 default=0)
-    parser.add_argument('--episode_length', 'Length of episode',
+    parser.add_argument('--preopt_length', help='Length of preoptimisation',
+    			 default=5)
+    parser.add_argument('--episode_length', help='Length of episode',
     			 default=10)
+    parser.add_argument('--painn_model_location', help='Location of PaiNN model',
+    			 default="./painn_model/best_inference_model")
+    parser.add_argument('--grid_size', help='Size of action grid',
+    			 default= 3)
     args = parser.parse_args()
 
     reactant = ase.io.read(args.reactant_file)
@@ -64,8 +68,7 @@ def main():
 
     for i in tqdm(range(args.batch_size)):
         interpolation = get_interpolation(reactant, product, args.n_images)
-        element = {"_atomic_numbers": interpolation[0], "_positions": interpolation[1], "_cell": reactant.cell, "_pbc": reactant.pbc}
-        data_list.append(element)
+        data_list.append(interpolation)
 
     dataset = DatasetLoader(data_list)
 
@@ -78,18 +81,28 @@ def main():
     )
 
     if args.preopt_length != 0:
-        agent = Agent(args, dataloader, preopt = True)
+        agent = Agent(args, dataloader, args.preopt_length)
         logging.info("Pre-optimisation")
         agent.run()
 
-        with open("./best_path/fmax_path.pkl", "r") as file:
+        with open("./best_paths/fmax_path.pkl", "rb") as file:
             path = pickle.load(file)
         
         data_list = []
-        for i in tqdm(range(args.batch_size)):
+        for i in range(args.batch_size):
             data_list.append(path)
 
-    agent = Agent(args, dataloader)
+    dataset = DatasetLoader(data_list)
+
+    dataloader = torch.utils.data.DataLoader(
+        dataset=dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=collate_fn,
+        num_workers=8,
+    )
+
+    agent = Agent(args, dataloader, args.max_epochs)
     logging.info("Training Model")
     agent.run()
 
