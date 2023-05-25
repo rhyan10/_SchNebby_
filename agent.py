@@ -130,8 +130,6 @@ class Agent:
         self.max_epochs = opt_length
         self.env = Env(self.batch_size, self.n_images, self.cutoff, self.k, self.basis, args.device, args.n_bins, args.painn_model_location)
         self.converter = SchNetConverter(neighbor_list=trn.ASENeighborList(cutoff=10), device=args.device)
-        self.logger = logging.getLogger('Logger')
-        self.logger = logging.FileHandler('log_file.txt')
         self.schnetpack_model = torch.load(args.painn_model_location)
         self.schnetpack_model.to(args.device)
         self.max_reward = 0
@@ -199,16 +197,16 @@ class Agent:
 
                     if counter == self.episode_length - 1:
                         done = True
-                        with open("actor_model.pkl", "wb") as f:
+                        with open("./logging/actor_model.pkl", "wb") as f:
                             dill.dump(self.actor.model, f)
-                        with open("critic_model.pkl", "wb") as f:
+                        with open("./logging/critic_model.pkl", "wb") as f:
                             dill.dump(self.critic.model, f)
 
                     if len(reward_batch) >= self.update_interval or done == True:
 
                         if done == True:
-                            logger.info('Reward: '+ str(np.sum(reward.numpy())))
-
+                            with open('./logging/rewards.txt', 'a') as f:
+                                f.write(str(np.sum(reward.numpy())) + '\n')
 
                         td_targets_shape = torch.stack(reward_batch, dim=0).shape
 

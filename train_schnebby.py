@@ -16,6 +16,8 @@ from ase import Atoms
 logging.basicConfig(level=logging.INFO)
 import torch
 from ase import units
+logging.basicConfig()
+log = logging.getLogger("schenbby")
 
 torch.manual_seed(0)
 
